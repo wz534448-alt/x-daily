@@ -113,6 +113,7 @@ async function getJSON(url){
 function showBanner(t){const b=$('#banner');b.textContent=t;b.style.display='block';}
 
 async function init(){
+  if(navigator.onLine===false)showBanner('现在没网，显示的是上次加载的内容。');
   try{ const idx=await getJSON('data/index.json'); state.dates=(idx.dates||[]).slice().sort().reverse(); }
   catch(e){ $('#main').innerHTML='<div class="empty">暂时打不开，请检查网络后下拉刷新。</div>';$('#updated').textContent='';return; }
   const sel=$('#date');

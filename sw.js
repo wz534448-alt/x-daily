@@ -1,6 +1,6 @@
 // X 热点日报 service worker: network-first for pages & data (falls back to last copy offline),
 // cache-first for icons.
-const CACHE = 'xdaily-v1';
+const CACHE = 'xdaily-v2';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/apple-touch-icon.png', './icons/icon-192.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
