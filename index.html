@@ -64,14 +64,25 @@ section h2 .n{font-size:15px;color:var(--sub);font-weight:400}
 footer{color:var(--sub);font-size:14px;line-height:1.7;padding:10px 18px calc(30px + env(safe-area-inset-bottom));max-width:720px;margin:0 auto}
 footer .tag{margin-right:4px}
 .empty{padding:40px 16px;text-align:center;color:var(--sub)}
+.rbtn{border:none;background:var(--accent);color:#fff;border-radius:12px;height:44px;padding:0 14px;font-size:18px;font-weight:800;white-space:nowrap}
+.rbtn:disabled{opacity:.6}
+.topr{display:flex;gap:8px}
+.toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 14px);transform:translate(-50%,-150%);background:rgba(20,22,26,.92);color:#fff;padding:12px 18px;border-radius:14px;font-size:17px;z-index:20;transition:transform .25s;width:max-content;max-width:92vw;white-space:nowrap;text-align:center}
+.toast.show{transform:translate(-50%,0)}
+.ptr{height:0;overflow:hidden;text-align:center;color:var(--sub);font-size:15px;line-height:40px}
+.eng{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0 0;padding:9px 12px;border-radius:12px;background:var(--graybg);color:var(--text);text-decoration:none;font-size:16px}
+.eng b{color:var(--accent);white-space:nowrap}
+.ctag{display:inline-block;font-size:13px;padding:2px 8px;border-radius:6px;background:var(--accent2);color:var(--accent);font-weight:700}
 .top-btn{position:fixed;right:16px;bottom:calc(20px + env(safe-area-inset-bottom));width:52px;height:52px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-size:22px;box-shadow:0 4px 14px rgba(0,0,0,.25);display:none;z-index:9}
 </style>
 </head>
 <body>
+<div class="ptr" id="ptr">⬇️ 下拉刷新</div>
+<div class="toast" id="toast"></div>
 <header>
   <div class="top">
     <h1>X <span>热点</span>日报</h1>
-    <button class="iconbtn" id="theme" aria-label="切换深色/浅色">🌙</button>
+    <div class="topr"><button class="rbtn" id="refresh" aria-label="刷新">🔄 刷新</button><button class="iconbtn" id="theme" aria-label="切换深色/浅色">🌙</button></div>
   </div>
   <div class="datebar">
     <button id="prev" aria-label="前一天">‹ 前一天</button>
@@ -80,6 +91,7 @@ footer .tag{margin-right:4px}
   </div>
   <div class="updated" id="updated">加载中…</div>
   <div class="updated">👆 点标题看中文摘要，再点“看原帖”</div>
+  <a class="eng" href="https://wz534448-alt.github.io/english-daily/" target="_blank" rel="noopener"><span>🇬🇧 英语每日一句</span><b>去学一句 ›</b></a>
 </header>
 <div class="banner" id="banner"></div>
 <nav><div class="chips" id="chips"></div></nav>
@@ -89,7 +101,8 @@ footer .tag{margin-right:4px}
 <script>
 (function(){
 const $=s=>document.querySelector(s);
-const state={dates:[],date:null,data:null,cat:'all'};
+const state={dates:[],date:null,data:null,cat:localStorage.getItem('cat')||'all'};
+function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('show'),2600);}
 // theme
 const root=document.documentElement;
 function applyTheme(t){root.dataset.theme=t;$('#theme').textContent=t==='dark'?'☀️':'🌙';}
@@ -101,11 +114,11 @@ function num(n){n=Number(n)||0;if(n>=1e8)return (n/1e8).toFixed(1).replace(/\.0$
 function bj(iso){// show in Beijing time regardless of phone zone
   const d=new Date(iso);if(isNaN(d))return '';const b=new Date(d.getTime()+8*3600e3);
   const p=x=>String(x).padStart(2,'0');return {md:(b.getUTCMonth()+1)+'月'+b.getUTCDate()+'日',hm:p(b.getUTCHours())+':'+p(b.getUTCMinutes())};}
-function tagClass(f){if(/未证实|传闻|未核实/.test(f))return 'red';if(/争议|观点|说法|各执|分析|评测|分享|自述|剧本|非官方|报道|汇总|网传/.test(f))return 'mid';return '';}
+function tagClass(f){if(/未证实|传闻|未核实/.test(f))return 'red';if(/争议|观点|说法|各执|分析|评测|分享|自述|剧本|非官方|报道|汇总|网传|宣称|宣传|晒|推荐|经验|概念/.test(f))return 'mid';return '';}
 function dateLabel(d){const [y,m,dd]=d.split('-');const w='日一二三四五六'[new Date(d+'T12:00:00+08:00').getUTCDay()];return `${+m}月${+dd}日 周${w}`;}
 
-async function getJSON(url){
-  const r=await fetch(url,{cache:'no-cache'});
+async function getJSON(url,fresh){
+  const r=await fetch(fresh?url+'?t='+Date.now():url,{cache:fresh?'no-store':'no-cache'});
   if(!r.ok)throw new Error(r.status);
   if(r.headers.get('x-from-cache')==='1')showBanner('现在没网，显示的是上次加载的内容。');
   return r.json();
@@ -115,35 +128,61 @@ function showBanner(t){const b=$('#banner');b.textContent=t;b.style.display='blo
 async function init(){
   if(navigator.onLine===false)showBanner('现在没网，显示的是上次加载的内容。');
   try{ const idx=await getJSON('data/index.json'); state.dates=(idx.dates||[]).slice().sort().reverse(); }
-  catch(e){ $('#main').innerHTML='<div class="empty">暂时打不开，请检查网络后下拉刷新。</div>';$('#updated').textContent='';return; }
-  const sel=$('#date');
-  sel.innerHTML=state.dates.map(d=>`<option value="${d}">${dateLabel(d)}</option>`).join('');
+  catch(e){ $('#main').innerHTML='<div class="empty">暂时打不开，请检查网络（VPN）后点“🔄 刷新”。</div>';$('#updated').textContent='';return; }
+  const sel=$('#date');fillDates();
   const want=(location.hash||'').slice(1);
   load(state.dates.includes(want)?want:state.dates[0]);
   sel.onchange=()=>load(sel.value);
   $('#prev').onclick=()=>{const i=state.dates.indexOf(state.date);if(i<state.dates.length-1)load(state.dates[i+1]);};
   $('#next').onclick=()=>{const i=state.dates.indexOf(state.date);if(i>0)load(state.dates[i-1]);};
 }
+function fillDates(){$('#date').innerHTML=state.dates.map(d=>`<option value="${d}">${dateLabel(d)}</option>`).join('');if(state.date)$('#date').value=state.date;}
+let busy=false;
+async function refresh(){
+  if(busy)return;busy=true;const b=$('#refresh');b.disabled=true;b.textContent='⏳ 刷新中';
+  try{
+    const idx=await getJSON('data/index.json',true);
+    const dates=(idx.dates||[]).slice().sort().reverse();const newest=dates[0];
+    const data=await getJSON('data/'+newest+'.json',true);
+    const old=state.data&&state.date===newest?state.data.generated_at:null;
+    state.dates=dates;fillDates();
+    const isNew=!(old&&old===data.generated_at);
+    show(newest,data,isNew&&state.date===newest);
+    $('#banner').style.display='none';
+    const g=bj(data.generated_at);
+    toast(isNew?'有新内容 ✨（更新于 '+g.hm+'）':'已是最新（更新于 '+g.hm+'）');
+  }catch(e){toast('刷新失败，请检查网络或 VPN');}
+  finally{busy=false;b.disabled=false;b.textContent='🔄 刷新';}
+}
 async function load(d){
   state.date=d;$('#date').value=d;
   const i=state.dates.indexOf(d);$('#prev').disabled=i>=state.dates.length-1;$('#next').disabled=i<=0;
   if(location.hash.slice(1)!==d)history.replaceState(null,'','#'+d);
   $('#main').innerHTML='<div class="empty">加载中…</div>';
-  try{state.data=await getJSON('data/'+d+'.json');}
+  let data;try{data=await getJSON('data/'+d+'.json');}
   catch(e){$('#main').innerHTML='<div class="empty">这一天的内容加载失败，请检查网络。</div>';return;}
-  const g=bj(state.data.generated_at);
-  $('#updated').textContent=`更新于 ${g.md} ${g.hm}（北京时间） · 共 ${state.data.categories.reduce((a,c)=>a+c.items.length,0)} 条`;
-  state.cat='all';render();window.scrollTo(0,0);
+  show(d,data,true);
+}
+function show(d,data,top){
+  state.date=d;state.data=data;$('#date').value=d;
+  const i=state.dates.indexOf(d);$('#prev').disabled=i>=state.dates.length-1;$('#next').disabled=i<=0;
+  if(location.hash.slice(1)!==d)history.replaceState(null,'','#'+d);
+  const g=bj(data.generated_at);
+  $('#updated').textContent=`更新于 ${g.md} ${g.hm}（北京时间） · 共 ${data.categories.reduce((a,c)=>a+c.items.length,0)} 条`;
+  if(state.cat!=='all'&&!data.categories.some(c=>c.id===state.cat))state.cat='all';
+  render();if(top)window.scrollTo(0,0);
+  const on=$('#chips .chip.on');if(on)on.scrollIntoView({inline:'center',block:'nearest'});
 }
 function render(){
   const D=state.data;
   const chips=[`<button class="chip ${state.cat==='all'?'on':''}" data-c="all">全部</button>`].concat(
     D.categories.map(c=>`<button class="chip ${state.cat===c.id?'on':''}" data-c="${esc(c.id)}">${esc(c.icon)} ${esc(c.name)} <small>${c.items.length}</small></button>`));
   $('#chips').innerHTML=chips.join('');
-  $('#chips').querySelectorAll('.chip').forEach(b=>b.onclick=()=>{state.cat=b.dataset.c;render();
-    if(state.cat!=='all'){const s=document.getElementById('sec-'+state.cat);if(s)window.scrollTo({top:s.offsetTop-$('nav').offsetHeight-4});}else window.scrollTo(0,0);
-    b.scrollIntoView({inline:'center',block:'nearest'});});
-  const cats=state.cat==='all'?D.categories:D.categories.filter(c=>c.id===state.cat);
+  $('#chips').querySelectorAll('.chip').forEach(b=>b.onclick=()=>{state.cat=b.dataset.c;localStorage.setItem('cat',state.cat);render();
+    const n=$('nav');if(scrollY>n.offsetTop)window.scrollTo(0,n.offsetTop);
+    const nb=$('#chips .chip.on');if(nb)nb.scrollIntoView({inline:'center',block:'nearest'});});
+  const all=state.cat==='all';
+  const cats=all?[{id:'all',icon:'🔥',name:'全部热点（按热度排）',items:D.categories.flatMap(c=>c.items.map(it=>Object.assign({_c:c},it))).sort((a,b)=>((b.metrics||{}).views||0)-((a.metrics||{}).views||0))}]:D.categories.filter(c=>c.id===state.cat);
   const gen=new Date(D.generated_at).getTime();
   let h=`<div class="tools"><button id="openall">全部展开</button><button id="closeall">全部收起</button></div>`;
   for(const c of cats){
@@ -153,7 +192,7 @@ function render(){
       const m=it.metrics||{},p=it.post||{},t=bj(p.created_at);
       const old=gen-new Date(p.created_at).getTime()>24*3600e3;
       h+=`<article class="card"><button class="head" aria-expanded="false">
-        <div class="title">${esc(it.title)}</div>
+        ${it._c?`<span class="ctag">${esc(it._c.icon)} ${esc(it._c.name)}</span>`:''}<div class="title">${esc(it.title)}</div>
         <div class="meta"><span class="hot">🔥 ${num(m.views)} 浏览</span><span>👍 ${num(m.likes)}</span>${it.flag?`<span class="tag ${tagClass(it.flag)}">${esc(it.flag)}</span>`:''}<span class="arrow">▼</span></div>
       </button><div class="body">
         <p class="summary">${esc(it.summary)}</p>
@@ -169,12 +208,18 @@ function render(){
   $('#main').querySelectorAll('.head').forEach(b=>b.onclick=()=>{const a=b.parentNode;a.classList.toggle('open');b.setAttribute('aria-expanded',a.classList.contains('open'));});
   const setAll=o=>$('#main').querySelectorAll('.card').forEach(a=>{a.classList.toggle('open',o);a.firstElementChild.setAttribute('aria-expanded',o);});
   $('#openall').onclick=()=>setAll(true);$('#closeall').onclick=()=>setAll(false);
-  $('#foot').innerHTML=`<p><b>怎么看：</b>点标题展开一两句话的中文摘要，觉得有意思再点“看原帖”（需要能上 x.com）。🔥 是这条帖子在抓取时的浏览量，之后还会变。每类按浏览量从高到低排。</p>
+  $('#foot').innerHTML=`<p><b>怎么看：</b>点标题展开一两句话的中文摘要，觉得有意思再点“看原帖”（需要能上 x.com）。🔥 是这条帖子在抓取时的浏览量，之后还会变。“全部”把所有频道混在一起按浏览量从高到低排，每张卡片上标着属于哪个频道。内容每天早上自动更新，点右上角“🔄 刷新”或在顶部往下拉就能拿到最新一期。</p>
   <p><b>标签：</b><span class="tag red">未证实</span><span class="tag red">传闻</span>还没有可靠证实，别当真；<span class="tag mid">观点</span><span class="tag mid">有争议</span>是某个人或某一方的说法。</p>
   <p>${esc(D.source_note||'')} 本页只用 X 接口返回的帖子和数字，不编造。</p>`;
 }
 const tb=$('#totop');addEventListener('scroll',()=>{tb.style.display=scrollY>900?'block':'none';},{passive:true});tb.onclick=()=>window.scrollTo({top:0,behavior:'smooth'});
 if('serviceWorker' in navigator){addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));}
+$('#refresh').onclick=refresh;
+(function(){let y0=null,dy=0;const p=$('#ptr');
+  addEventListener('touchstart',e=>{y0=scrollY<=0?e.touches[0].clientY:null;dy=0;},{passive:true});
+  addEventListener('touchmove',e=>{if(y0==null)return;dy=e.touches[0].clientY-y0;if(dy>0&&scrollY<=0){const h=Math.min(dy/2,60);p.style.height=h+'px';p.textContent=dy>110?'⬆️ 松开刷新':'⬇️ 下拉刷新';}},{passive:true});
+  addEventListener('touchend',()=>{if(y0!=null&&dy>110)refresh();y0=null;dy=0;p.style.height='0';},{passive:true});
+})();
 init();
 })();
 </script>
