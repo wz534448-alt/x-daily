@@ -216,7 +216,7 @@ function render(){
   const cats=all?[{id:'all',icon:'🔥',name:'全部热点（按热度排）',items:D.categories.flatMap(c=>c.items.map(it=>Object.assign({_c:c},it))).sort((a,b)=>((b.metrics||{}).views||0)-((a.metrics||{}).views||0))}]:D.categories.filter(c=>c.id===state.cat);
   const gen=new Date(D.generated_at).getTime();
   let h='';
-  if(D.hot_zh) h+=hotzhBox(D.hot_zh);
+  if(all && D.hot_zh) h+=hotzhBox(D.hot_zh);
   h+=`<div class="tools"><button id="openall">全部展开</button><button id="closeall">全部收起</button></div>`;
   for(const c of cats){
     h+=`<section id="sec-${esc(c.id)}"><h2>${esc(c.icon)} ${esc(c.name)} <span class="n">${c.items.length} 条</span></h2>`;
